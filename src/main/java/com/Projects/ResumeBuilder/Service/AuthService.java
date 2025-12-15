@@ -1,17 +1,20 @@
 package com.Projects.ResumeBuilder.Service;
 
 import com.Projects.ResumeBuilder.Dto.AuthResponse;
+import com.Projects.ResumeBuilder.Dto.LoginRequest;
 import com.Projects.ResumeBuilder.Dto.RegisterRequest;
 import com.Projects.ResumeBuilder.Entity.User;
 import com.Projects.ResumeBuilder.Exception.ResumeBuilderException;
 import com.Projects.ResumeBuilder.Repository.UserRepository;
+import com.Projects.ResumeBuilder.Utilities.JWTUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.util.Optional;
 import java.util.UUID;
 
 @Slf4j
@@ -21,6 +24,8 @@ public class AuthService {
 
     private final UserRepository userRepository;
     private final EmailService emailService;
+    private final PasswordEncoder passwordEncoder;
+    private final JWTUtil jwtUtil;
 
     @Value("${app.base.url}")
     private String appBaseUrl;
@@ -92,7 +97,7 @@ public class AuthService {
         return User.builder()
                 .name(newUser.getName())
                 .email(newUser.getEmail())
-                .password(newUser.getPassword())
+                .password(passwordEncoder.encode(newUser.getPassword()))
                 .profileImageUrl(newUser.getProfileImageUrl())
                 .subscriptionPlan("Basic")
                 .emailVerified(false)
@@ -120,5 +125,35 @@ public class AuthService {
             throw new ResumeBuilderException("User doesn't exist");
         }
         userRepository.deleteByEmail(email);
+    }
+
+    public AuthResponse login(LoginRequest loginRequest){
+        User existingUser = userRepository.findByEmail(loginRequest.getEmail()).orElseThrow(()->new UsernameNotFoundException("Invalid email or password"));
+        if(!existingUser.isEmailVerified()){
+            throw new RuntimeException("Please verify your email before logging in");
+        }
+        if(!passwordEncoder.matches(loginRequest.getPassword(),existingUser.getPassword())){
+            throw new UsernameNotFoundException("Invalid email or password");
+        }
+        String token = jwtUtil.generateToken(existingUser.getId());
+        AuthResponse response = toResponse(existingUser);
+        response.setToken(token);
+        return response;
+    }
+
+    public void resendVerification(String email) {
+        User existingUser = userRepository.findByEmail(email).orElseThrow(()->new UsernameNotFoundException("Invalid email"));
+        if(existingUser.isEmailVerified()){
+            throw new RuntimeException("Email is already verified");
+        }
+        existingUser.setVerificationToken(UUID.randomUUID().toString());
+        existingUser.setVerificationExpires(LocalDateTime.now().plusHours(24));
+        userRepository.save(existingUser);
+        sendVerificationEmail(existingUser);
+    }
+
+    public AuthResponse getProfile(Object principalObject) {
+        User existingUser = (User)principalObject;
+        return toResponse(existingUser);
     }
 }
