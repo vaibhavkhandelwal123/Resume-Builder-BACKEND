@@ -20,4 +20,7 @@ public class AppConstants {
     public static final String VERIFY_PAYMENT = "/verify";
     public static final String HISTORY_PAYMENT = "/history";
     public static final String ORDER_PAYMENT_ID = "/order/{orderId}";
+    public static final String EMAIL = "api/email";
+    public static final String SEND_RESUME = "/send-resume";
+
 }
